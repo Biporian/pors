@@ -22,6 +22,7 @@ SymbolTableEntry* SymbolTableFind(const char* name){
     SymbolTableEntry *entry;
 
     HASH_FIND_STR(symbolTable, name, entry);
+
     return entry;
 }
 
@@ -127,38 +128,36 @@ ASTNode* createEnumConstNode(const char* name, ASTNode* value){
     return node;
 }
 
-ASTNode* createTypeNode(BaseType type, const char* name, int flags){
+ASTNode* createTypeNode(BaseType type, const char* name, int pointer_count, int flags){
     ASTNode* node = createASTNode(AST_TYPE);
-    node->data.type_container.type = type;
-    node->data.type_container.name = name ? strdup(name) : NULL;
+
+    node->data.type_container.base_type = type;
     node->data.type_container.flags = flags;
+    node->data.type_container.pointer_count = pointer_count; 
+    node->data.type_container.alias_name = name ? strdup(name) : NULL; 
+    
     return node;
 }
 
-ASTNode* createSimpleTypeNode(BaseType type, int flags){
-    return createTypeNode(type, NULL, flags);
-}
 
-ASTNode* createTypeDefNode(const char* name, BaseType type, int flags){
-    return createTypeNode(type, name, flags);
-}
+// ASTNode* createTypeDefNode(const char* name, BaseType type, int flags){
+//     return createTypeNode(type, name, flags);
+// }
 
-ASTNode* createVarDeclNode(const char* name, int flags, int pointer_count, BaseType type, ASTNode* init_value){
-    ASTNode* node = createASTNode(AST_VAR_DECL);
-    node->data.variable_decl.name = strdup(name);
-    node->data.variable_decl.flags = flags;
-    node->data.variable_decl.pointer_count = pointer_count;
-    node->data.variable_decl.type = type;
-    node->data.variable_decl.init_value = init_value;
-    return node;
-}
+// ASTNode* createVarDeclNode(const char* name, int flags, int pointer_count, BaseType type, ASTNode* init_value){
+//     ASTNode* node = createASTNode(AST_VAR_DECL);
+//     node->data.variable_decl.name = strdup(name);
+//     node->data.variable_decl.flags = flags;
+//     node->data.variable_decl.pointer_count = pointer_count;
+//     node->data.variable_decl.type = type;
+//     node->data.variable_decl.init_value = init_value;
+//     return node;
+// }
 
-ASTNode* createFunctionDeclNode(const char* name, int flags, int pointer_count, BaseType return_type, ASTNode* args){
+ASTNode* createFunctionDeclNode(const char* name, TypeInfo type_info, ASTNode* args){
     ASTNode* node = createASTNode(AST_FUNCTION_DECL);
     node->data.function_decl.name = strdup(name);
-    node->data.function_decl.flags = flags;
-    node->data.function_decl.pointer_count = pointer_count;
-    node->data.function_decl.return_type = return_type;
+    node->data.function_decl.type_info = type_info;
 
     node->data.function_decl.args = args;
     return node;
@@ -166,7 +165,6 @@ ASTNode* createFunctionDeclNode(const char* name, int flags, int pointer_count, 
 
 ASTNode* createFunctionDefNode(ASTNode* declaration, ASTNode* body){
     ASTNode* node = createASTNode(AST_FUNCTION_DEF);
-    node->data.function_def.declaration = declaration;
     node->data.function_def.body = body;
     return node;
 }
@@ -194,6 +192,12 @@ ASTNode* createMemberAccessNode(ASTNode* parent, const char* field, int is_point
     return node;
 }
 
+ASTNode* oneMorePointer(ASTNode* type_node) {
+    type_node->data.type_container.pointer_count += 1;
+    return type_node;
+} 
+
+
 
 void addObjectToBlockArray(ASTNode* blockNode, ASTNode* object){
     int count = blockNode->data.block.count;
@@ -205,6 +209,7 @@ void addObjectToBlockArray(ASTNode* blockNode, ASTNode* object){
     }
     blockNode->data.block.statements[(blockNode->data.block.count)++] = object;
 }
+
 
 void printAST(ASTNode* node, int parent_id, FILE* out) {
     if (!node) return; 
@@ -220,6 +225,12 @@ void printAST(ASTNode* node, int parent_id, FILE* out) {
             fprintf(out, "node%d [label=\"var %s\"]\n", my_id, node->data.variable.name);
             break;
         case AST_STRING:
+            // need to escape quotes for the DOT 
+            for (int j = 0; node->data.string.value[j]; j++) {
+                if (node->data.string.value[j] == '"') {
+                    node->data.string.value[j] = '\'';
+                }
+            }
             fprintf(out, "node%d [label=\"string %s\"]\n", my_id, node->data.string.value);
             break;
         case AST_BINOP:
@@ -261,8 +272,12 @@ void printAST(ASTNode* node, int parent_id, FILE* out) {
             fprintf(out, "node%d [label=\"while\"]\n", my_id);
             break;
         case AST_BLOCK:
-            fprintf(out, "node%d [label=\"block\"]\n", my_id);
-            break;
+            if (node->data.block.count == 0) {
+                return;
+            } else {
+                fprintf(out, "node%d [label=\"block\"]\n", my_id);
+                break;
+            }
         case AST_FUNC_CALL:
             fprintf(out, "node%d [label=\"func call %s\"]\n", my_id, node->data.function_call.func_name);
             break;
@@ -282,14 +297,14 @@ void printAST(ASTNode* node, int parent_id, FILE* out) {
             fprintf(out, "node%d [label=\"struct def %s\"]\n", my_id, node->data.struct_def.name);
             break;
         case AST_TYPE:
-            fprintf(out, "node%d [label=\"type %s\"]\n", my_id, node->data.type_container.name ? node->data.type_container.name : getTypeName(node->data.type_container.type));
+            fprintf(out, "node%d [label=\"type %s\"]\n", my_id, node->data.type_container.alias_name ? node->data.type_container.alias_name : getTypeName(node->data.type_container.base_type));
             break;
         case AST_MEMBER_ACCESS:
             fprintf(out, "node%d [label=\"member access %s\"]\n", my_id,      node->data.member_access.field);
             break;
-        case AST_VAR_DECL:
-            fprintf(out, "node%d [label=\"var decl %s\"]\n", my_id, node->data.variable_decl.name);
-            break;
+        // case AST_VAR_DECL:
+        //     fprintf(out, "node%d [label=\"var decl %s\"]\n", my_id, node->data.variable_decl.name);
+        //     break;
         case AST_ENUM_DEF:
             fprintf(out, "node%d [label=\"enum def %s\"]\n", my_id, node->data.enum_def.name);
             break;          
@@ -298,10 +313,9 @@ void printAST(ASTNode* node, int parent_id, FILE* out) {
             fprintf(out, "node%d [label=\"unknown %d\"]\n", my_id, node->type);
     }
 
-    if (parent_id != 0) {
-        fprintf(out, "node%d -> node%d\n", parent_id, my_id);
+    
 
-    }
+    // recursively print children
     if (node->type == AST_BINOP) {
         printAST(node->data.binop.left, my_id, out);
         printAST(node->data.binop.right, my_id, out);
@@ -340,7 +354,11 @@ void printAST(ASTNode* node, int parent_id, FILE* out) {
     } else if (node->type == AST_FUNCTION_DECL) {
         printAST(node->data.function_decl.args, my_id, out);
     }
-    
+    // connect to parent
+    if (parent_id != 0) {
+        fprintf(out, "node%d -> node%d\n", parent_id, my_id);
+
+    }
 }
 
 const char* getTypeName(BaseType type) {

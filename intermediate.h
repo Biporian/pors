@@ -24,10 +24,11 @@ typedef enum {
     TYPE_DOUBLE,
     TYPE_SIGNED,
     TYPE_UNSIGNED,
-    TYPE_STRUCT,
-    TYPE_UNION,
-    TYPE_ENUM,
-    TYPE_ALIAS
+    // TYPE_STRUCT,
+    // TYPE_UNION,
+    // TYPE_ENUM,
+    // TYPE_ALIAS
+    TYPE_DUMMY
 } BaseType;
 
 typedef enum {
@@ -59,15 +60,23 @@ typedef struct SymbolTableEntry{
     UT_hash_handle hh;
 } SymbolTableEntry;
 
+typedef struct TypeInfo {
+    BaseType base_type; 
+    char* alias_name;
+    int pointer_count; 
+    int flags;
+    
+} TypeInfo;
+
 typedef struct ASTNode ASTNode;
 
 struct ASTNode {
 
     ASTNodeType type; 
     union {
-        struct {BaseType type; char* name; int flags;} type_container; // 
+        TypeInfo type_container; // 
         struct {int value;} constant; // 
-        struct {char* name; SymbolTableEntry* sym_entry;} variable; //
+        struct {char* name; SymbolTableEntry* sym_entry;  TypeInfo type_info;} variable; //
         struct {char* value;} string; // 
         struct {int op; ASTNode* left; ASTNode* right;} binop; //
         struct {int op; ASTNode* operand;} unary; //
@@ -79,8 +88,8 @@ struct ASTNode {
         struct {char* func_name; ASTNode* args;} function_call; // 
         struct {ASTNode* return_value;} return_stmt; // 
         struct {char* name; ASTNode* value;} enum_const; // 
-        struct {char* name; int flags; int pointer_count; BaseType type; ASTNode* init_value;} variable_decl;  //
-        struct {char* name; int flags; int pointer_count; ASTNode* args; BaseType return_type;} function_decl; // 
+        // struct {char* name; int flags; int pointer_count; // BaseType type; ASTNode* init_value;} variable_decl;  //
+        struct {char* name; TypeInfo type_info; ASTNode* args;} function_decl; // 
         struct {ASTNode* declaration; ASTNode* body;} function_def; // 
         struct {char* name; ASTNode* body; int is_union;} struct_def; // 
         struct {char* name; ASTNode* body;} enum_def; // 
@@ -101,25 +110,26 @@ ASTNode* createConstantNode(int value);
 ASTNode* createEnumConstNode(const char* name, ASTNode* value);
 ASTNode* createEnumDefNode(const char* name, ASTNode* body);
 ASTNode* createForNode(ASTNode* init, ASTNode* condition, ASTNode* increment, ASTNode* body);
-ASTNode* createFunctionDeclNode(const char* name, int flags, int pointer_count, BaseType return_type, ASTNode* args);
+ASTNode* createFunctionDeclNode(const char* name, TypeInfo type_info, ASTNode* args);
 ASTNode* createFunctionDefNode(ASTNode* declaration, ASTNode* body);
 ASTNode* createFunctionCallNode(const char* func_name, ASTNode* args);
 ASTNode* createIfNode(ASTNode* condition, ASTNode* if_body, ASTNode* else_branch);
 ASTNode* createMemberAccessNode(ASTNode* parent, const char* field, int is_pointer);
 ASTNode* createReturnNode(ASTNode* return_value);
-ASTNode* createSimpleTypeNode(BaseType type, int flags);
+// ASTNode* createSimpleTypeNode(BaseType type, int flags);
 ASTNode* createStringNode(const char* value);
 ASTNode* createStructDefNode(const char* name, int is_union, ASTNode* body);
-ASTNode* createTypeDefNode(const char* name, BaseType type, int flags);
-ASTNode* createTypeNode(BaseType type, const char* name, int flags);
+// ASTNode* createTypeDefNode(const char* name, BaseType type, int flags);
+ASTNode* createTypeNode(BaseType type, const char* name, int pointer_count, int flags);
 ASTNode* createUnaryNode(int op, ASTNode* operand);
-ASTNode* createVarDeclNode(const char* name, int flags, int pointer_count, BaseType type, ASTNode* init_value);
+// ASTNode* createVarDeclNode(const char* name, int flags, int pointer_count, BaseType type, ASTNode* init_value);
 ASTNode* createVariableNode(const char* name);
 ASTNode* createWhileNode(ASTNode* condition, ASTNode* body);
 SymbolTableEntry *SymbolTableAdd(const char* name);
 SymbolTableEntry *SymbolTableFind(const char* name);
 void printAST(ASTNode* node, int parent_id, FILE* out);
 const char* getTypeName(BaseType type);
+ASTNode* oneMorePointer(ASTNode* type_node); 
 
 
 #endif

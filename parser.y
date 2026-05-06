@@ -48,15 +48,17 @@ ASTNode* finalAST;
 %type <ast_node> function_definition external_declaration translation_unit type_name declarator
 %type <ast_node> init_declarator abstract_declarator parameter_declaration init_declarator_list 
 %type <ast_node> parameter_list parameter_type_list expression_statement initializer declaration_list
-%type <ast_node> jump_statement initializer_list identifier_list
+%type <ast_node> jump_statement initializer_list identifier_list type_qualifier   type_qualifier_list pointer  
 
-%type <int_val> type_qualifier storage_class_specifier unary_operator type_qualifier_list assignment_operator pointer struct_or_union 
+%type <int_val> unary_operator assignment_operator struct_or_union storage_class_specifier 
+
 
 %start translation_unit
 %%
 
 primary_expression
-	: IDENTIFIER {$$ = createVariableNode($1);}
+	: IDENTIFIER {$$ = createVariableNode($1);
+                $$->data.variable.sym_entry = SymbolTableFind($1);}
 	| CONSTANT {$$ = createConstantNode($1);}
 	| STRING_LITERAL {$$ = createStringNode($1);}
 	| '(' expression ')' {$$ = $2;}
@@ -194,32 +196,42 @@ constant_expression
 	;
 
 declaration
-	: declaration_specifiers ';' {$$ = $1}
+	: declaration_specifiers ';' {$$ = createBlockNode();}
 	| declaration_specifiers init_declarator_list ';' 
 	
-		{ for (int i = 0; i < $2->data.block.count; i++) {
-		ASTNode* decl = $2->data.block.statements[i];
-		
-		if (decl->type == AST_ASSIGN) {
-			decl->data.assign.var->data.variable_decl.type = $1->data.type_container.type;
-			decl->data.assign.var->data.variable_decl.flags |= $1->data.type_container.flags;
-		} else {
-			decl->data.variable_decl.type = $1->data.type_container.type;
-			decl->data.variable_decl.flags |= $1->data.type_container.flags;
-		}
+		{ 
+    ASTNode* newBlockNode = createBlockNode();
+    for (int i = 0; i < $2->data.block.count; i++) {
+      ASTNode* decl = $2->data.block.statements[i];
+
+      SymbolTableEntry* sym_entry = SymbolTableFind(decl->data.variable.name);
+
+      if (sym_entry) {
+        // print an error
+      } 
+      if (decl->type == AST_ASSIGN) {
+        decl->data.assign.var->data.variable.type_info.flags |= $1->data.type_container.flags;
+        decl->data.assign.var->data.variable.type_info.pointer_count += $1->data.type_container.pointer_count;
+        decl->data.assign.var->data.variable.type_info.base_type = $1->data.type_container.base_type;
+        SymbolTableAdd(decl->data.assign.var->data.variable.name);
+        addObjectToBlockArray(newBlockNode, decl);
+      } else {
+        decl->data.variable.type_info = $1->data.type_container;
+        SymbolTableAdd(decl->data.variable.name);
+      }
 		} 
-      $$ = $2;}
+      $$ = newBlockNode;}
 
 
 	;
 
 declaration_specifiers
-	: storage_class_specifier {$$ = createSimpleTypeNode(TYPE_INT, $1);}
+	: storage_class_specifier {$$ = createTypeNode(TYPE_DUMMY, NULL, 0, $1);}
 	| storage_class_specifier declaration_specifiers {$2->data.type_container.flags |= $1; $$ = $2;}
 	| type_specifier {$$ = $1;}
-	| type_specifier declaration_specifiers {$2->data.type_container.type = $1->data.type_container.type; $$ = $2;}
-	| type_qualifier {$$ = createSimpleTypeNode(TYPE_INT, $1);}
-	| type_qualifier declaration_specifiers {$2->data.type_container.flags |= $1; $$ = $2;}
+	| type_specifier declaration_specifiers {$2->data.type_container.base_type = $1->data.type_container.base_type; $$ = $2;}
+	| type_qualifier {$$ = $1;}
+	| type_qualifier declaration_specifiers {$2->data.type_container.flags |= $1->data.type_container.flags; $$ = $2;}
 	;
 
 init_declarator_list
@@ -230,7 +242,7 @@ init_declarator_list
 init_declarator
     : declarator { $$ = $1; }
     | declarator '=' initializer 
-      {$1->data.variable_decl.init_value = $3; $$ = createAssignNode($1, '=', $3);}
+      {$$ = createAssignNode($1, '=', $3);}
     ;
 
 storage_class_specifier
@@ -242,29 +254,29 @@ storage_class_specifier
 	;
 
 type_specifier
-	: VOID {$$ = createSimpleTypeNode(TYPE_VOID, 0);}
-	| CHAR {$$ = createSimpleTypeNode(TYPE_CHAR, 0);}
-	| SHORT {$$ = createSimpleTypeNode(TYPE_SHORT, 0);}
-	| INT {$$ = createSimpleTypeNode(TYPE_INT, 0);}
-	| LONG {$$ = createSimpleTypeNode(TYPE_LONG, 0);}
-	| FLOAT {$$ = createSimpleTypeNode(TYPE_FLOAT, 0);}
-	| DOUBLE {$$ = createSimpleTypeNode(TYPE_DOUBLE, 0);}
-	| SIGNED {$$ = createSimpleTypeNode(TYPE_SIGNED, 0);}
-	| UNSIGNED {$$ = createSimpleTypeNode(TYPE_UNSIGNED, 0);}
+	: VOID {$$ = createTypeNode(TYPE_VOID, NULL, 0, 0);}
+	| CHAR {$$ = createTypeNode(TYPE_CHAR, NULL, 0, 0);}
+	| SHORT {$$ = createTypeNode(TYPE_SHORT, NULL, 0, 0);}
+	| INT {$$ = createTypeNode(TYPE_INT, NULL, 0, 0);}
+	| LONG {$$ = createTypeNode(TYPE_LONG, NULL, 0, 0);}
+	| FLOAT {$$ = createTypeNode(TYPE_FLOAT, NULL, 0, 0);}
+	| DOUBLE {$$ = createTypeNode(TYPE_DOUBLE, NULL, 0, 0);}
+	| SIGNED {$$ = createTypeNode(TYPE_SIGNED, NULL, 0, 0);}
+	| UNSIGNED {$$ = createTypeNode(TYPE_UNSIGNED, NULL, 0, 0);}
 	| struct_or_union_specifier {$$ = $1;}
 	| enum_specifier {$$ = $1;}
-	| TYPE_NAME {$$ = createTypeNode(TYPE_ALIAS, $1, 0);}
+	| TYPE_NAME {$$ = createTypeNode(TYPE_DUMMY, $1, 0, 0);}
 	;
 
 struct_or_union_specifier
-	: struct_or_union IDENTIFIER '{' struct_declaration_list '}' {$$ = createStructDefNode($2, $1, $4)}
+	: struct_or_union IDENTIFIER '{' struct_declaration_list '}' {$$ = createStructDefNode($2, $1, $4);}
 	| struct_or_union '{' struct_declaration_list '}' {$$ = createStructDefNode(NULL, $1, $3);}
 	| struct_or_union IDENTIFIER {$$ = createStructDefNode($2, $1, NULL);} 
 	;
 
 struct_or_union
-	: STRUCT {$$ = 0}
-	| UNION {$$ = 1}
+	: STRUCT {$$ = 0;}
+	| UNION {$$ = 1;}
 	;
 
 struct_declaration_list
@@ -280,18 +292,18 @@ struct_declaration
 		for (int i = 0; i < decl_list->data.block.count; i++) {
 			ASTNode* decl = decl_list->data.block.statements[i];
 			
-			decl->data.variable_decl.type = type_info->data.type_container.type;
-			decl->data.variable_decl.flags |= type_info->data.type_container.flags;
+			decl->data.variable.type_info.base_type = type_info->data.type_container.base_type;
+			decl->data.variable.type_info.flags |= type_info->data.type_container.flags;
 		
 		}
 		$$ = $2;}
 	;
 
 specifier_qualifier_list
-	: type_specifier specifier_qualifier_list {$1->data.type_container.flags |= $2->data.type_container.flags; $$ = $1; }
+	: type_specifier specifier_qualifier_list {$2->data.type_container.flags |= $1->data.type_container.flags; $$ = $2; }
 	| type_specifier 
-	| type_qualifier specifier_qualifier_list {$2->data.type_container.flags |= $1; $$ = $2; }
-	| type_qualifier {$$ = createSimpleTypeNode(TYPE_INT, $1); }
+	| type_qualifier specifier_qualifier_list {$2->data.type_container.flags |= $1->data.type_container.flags; $$ = $2; }
+	| type_qualifier {$$ = $1; }
 	;
 
 struct_declarator_list
@@ -300,12 +312,11 @@ struct_declarator_list
 	;
 
 struct_declarator
-	: declarator {
-        $$ = createVarDeclNode($1->data.variable.name, 0, 0, TYPE_VOID, NULL);}
+	: declarator { $$ = $1; }
 	| ':' constant_expression {
-        $$ = createVarDeclNode("anonymous_bitfield", 0, 0, TYPE_INT, NULL);}
+        $$ = createVariableNode("anonymous_bitfield");}
 	| declarator ':' constant_expression {
-        $$ = createVarDeclNode($1->data.variable.name, 0, 0, TYPE_INT, NULL);}
+        $$ = $1;}
 	;
 
 enum_specifier
@@ -325,20 +336,20 @@ enumerator
 	;
 
 type_qualifier
-	: CONST {$$ = FLAG_CONST;}
-	| VOLATILE {$$ = FLAG_VOLATILE;}
+	: CONST {$$ = createTypeNode(TYPE_DUMMY, NULL, 0, FLAG_CONST);}
+	| VOLATILE {$$ = createTypeNode(TYPE_DUMMY, NULL, 0, FLAG_VOLATILE);}
 	;
 
 declarator
     : pointer direct_declarator 
-      {$$ = createVarDeclNode($2->data.variable.name, 0, $1, TYPE_VOID, NULL);}
+      {$2->data.variable.type_info = $1->data.type_container; $$ = $2;}
     | direct_declarator 
-      {$$ = createVarDeclNode($1->data.variable.name, 0, 0, TYPE_VOID, NULL);}
+      {$$ = $1;}
     ;
 
+/* can be: identifier, nested declarator, array declarator, function declarator, function calls  */
 direct_declarator
-    : IDENTIFIER 
-      {SymbolTableAdd($1); $$ = createVariableNode($1);}
+    : IDENTIFIER {$$ = createVariableNode($1);}
     | '(' declarator ')' { $$ = $2; }
     | direct_declarator '[' constant_expression ']' { $$ = $1; /* Array support placeholder */ }
     | direct_declarator '[' ']' { $$ = $1; }
@@ -348,15 +359,15 @@ direct_declarator
     ;
 
 pointer
-    : '*'  {$$ = 1;}
-    | '*' type_qualifier_list {$$ = 1;}
-    | '*' pointer {$$ = $2 + 1;}
-    | '*' type_qualifier_list pointer {$$ = $3 + 1; }
+    : '*'  {$$ = createTypeNode(TYPE_DUMMY, NULL, 1, 0);}
+    | '*' type_qualifier_list {$$ = createTypeNode(TYPE_DUMMY, NULL, 1, $2->data.type_container.flags);}
+    | '*' pointer {$$ = oneMorePointer($2);}
+    | '*' type_qualifier_list pointer {$3->data.type_container.flags |= $2->data.type_container.flags; $$ = oneMorePointer($3);}
     ;
 
 type_qualifier_list
     : type_qualifier 
-    | type_qualifier_list type_qualifier { $$ = $1 | $2; }
+    | type_qualifier_list type_qualifier { $1->data.type_container.flags |= $2->data.type_container.flags; $$ = $1; }
     ;
 
 parameter_type_list
@@ -377,13 +388,19 @@ parameter_list
       }
     ;
 
+// NB a current issue is that both sides of the rules here can carry types, but we are only accepting one of them
 parameter_declaration
     : declaration_specifiers declarator 
       {
-        /* Using createVarDeclNode to represent the parameter */
-        $$ = createVarDeclNode($2->data.variable.name, $1->data.type_container.flags, 0, $1->data.type_container.type, NULL);
+        ASTNode* var_node = createVariableNode($2->data.variable.name);
+        var_node->data.variable.type_info.pointer_count = $2->data.variable.type_info.pointer_count;
+        var_node->data.variable.type_info.flags = $1->data.type_container.flags;
+        var_node->data.variable.type_info.base_type = $1->data.type_container.base_type;
+        
+        SymbolTableAdd($2->data.variable.name);
+        $$ = var_node;
       }
-    | declaration_specifiers abstract_declarator { $$ = $1; }
+    | declaration_specifiers abstract_declarator { $1->data.type_container.pointer_count += $2->data.type_container.pointer_count; $$ = $1; }
     | declaration_specifiers { $$ = $1; }
     ;
 
@@ -406,7 +423,7 @@ type_name
     ;
 
 abstract_declarator
-    : pointer { $$ = createConstantNode($1); } /* Returns indirection level as a constant[cite: 2] */
+    : pointer { $$ = $1; } 
     | direct_abstract_declarator { $$ = $1; }
     | pointer direct_abstract_declarator { $$ = $2; }
     ;
@@ -521,7 +538,7 @@ jump_statement
     : GOTO IDENTIFIER ';' { $$ = createVariableNode($2); }
     | CONTINUE ';' { $$ = createASTNode(AST_BLOCK); }
     | BREAK ';' { $$ = createASTNode(AST_BLOCK); }
-    | RETURN ';' { $$ = createReturnNode(NULL); }
+    | RETURN ';' { $$ = createReturnNode(NULL);}
     | RETURN expression ';' { $$ = createReturnNode($2); }
     ;
 
@@ -529,12 +546,16 @@ translation_unit
     : external_declaration 
       { 
         finalAST = createBlockNode(); 
-        addObjectToBlockArray(finalAST, $1); 
+        if (!($1->type == AST_BLOCK && $1->data.block.count == 0)) {
+            addObjectToBlockArray(finalAST, $1); 
+        }
         $$ = finalAST;
       }
     | translation_unit external_declaration 
       { 
-        addObjectToBlockArray(finalAST, $2); 
+        if (!($2->type == AST_BLOCK && $2->data.block.count == 0)) {
+            addObjectToBlockArray(finalAST, $2); 
+        }
         $$ = finalAST; 
       }
     ;
@@ -547,10 +568,8 @@ external_declaration
 function_definition
     : declaration_specifiers declarator compound_statement
       { 
-        ASTNode* decl = createFunctionDeclNode($2->data.variable_decl.name, 
-                                               $1->data.type_container.flags, 
-                                               $2->data.variable_decl.pointer_count, 
-                                               $1->data.type_container.type, NULL);
+        ASTNode* decl = createFunctionDeclNode($2->data.variable.name, 
+                                               $2->data.variable.type_info, NULL);
         $$ = createFunctionDefNode(decl, $3); 
       }
     ;
